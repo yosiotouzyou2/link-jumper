@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>URL Share Single File</title>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <style>
+    body { font-family: sans-serif; background: #0f172a; color: #fff; padding: 20px; max-width: 400px; margin: 0 auto; }
+    .card { background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 16px; border: 1px solid #334155; text-align: center; }
+    input { width: 100%; padding: 10px; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 6px; box-sizing: border-box; margin-bottom: 8px; }
+    button { width: 100%; padding: 10px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    button.send { background: #059669; }
+    img.qr { background: #fff; padding: 8px; border-radius: 8px; margin: 12px 0; }
+    .url-item { background: #1e293b; border: 1px solid #334155; padding: 10px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; }
+    .url-item a { background: #2563eb; color: #fff; padding: 4px 10px; border-radius: 4px; text-decoration: none; font-weight: bold; }
+    .status { color: #34d399; font-weight: bold; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <h2 style="text-align: center;">URL Share</h2>
+
+  <div class="card">
+    <div>状態: <span id="status" class="status">初期化中...</span></div>
+    <div id="qr-container">
+      <img id="qr-img" class="qr" style="display:none;" width="160" height="160">
+      <div id="my-id" style="font-size: 11px; color: #94a3b8; word-break: break-all;"></div>
+    </div>
+  </div>
+
+  <div id="connect-section" class="card">
+    <input type="text" id="target-id" placeholder="相手のIDを入力">
+    <button onclick="connectPeer()">接続</button>
+  </div>
+
+  <div id="send-section" class="card" style="display:none;">
+    <input type="url" id="send-url" placeholder="https://example.com">
+    <button class="send" onclick="sendUrl()">URLを送信 🚀</button>
+  </div>
+
+  <h3>共有履歴</h3>
+  <div id="history"></div>
+
+  <script>
+    let peer = null;
+    let conn = null;
+
+    // URLのパラメータから接続先IDを取得（?target=xxx）
+    const params = new URLSearchParams(window.location.search);
+    const targetParam = params.get('target');
+
+    // PeerJS初期化
+    peer = new Peer();
+
+    peer.on('open', (id) => {
+      document.getElementById('status').innerText = '待機中';
+      document.getElementById('my-id').innerText = 'ID: ' + id;
+
+      // Google Chart APIでQRコードを画像として生成（ライブラリ不使用）
+      const qrImg = document.getElementById('qr-img');
+      const shareUrl = location.href.split('?')[0] + '?target=' + id;
+      qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(shareUrl)}`;
+      qrImg.style.display = 'inline-block';
+
+      // パラメータがあれば自動接続
+      if (targetParam) {
+        document.getElementById('target-id').value = targetParam;
+        connectPeer();
+      }
+    });
+
+    peer.on('connection', (c) => {
+      conn = c;
+      setupConnection();
+    });
+
+    peer.on('error', (err) => {
+      document.getElementById('status').innerText = 'エラー: ' + err.type;
+    });
+
+    function connectPeer() {
+      const targetId = document.getElementById('target-id').value;
+      if (!targetId) return;
+      document.getElementById('status').innerText = '接続中...';
+      conn = peer.connect(targetId);
+      conn.on('open', () => {
+        setupConnection();
+      });
+    }
+
+    function setupConnection() {
+      document.getElementById('status').innerText = '接続完了 🎉';
+      document.getElementById('connect-section').style.display = 'none';
+      document.getElementById('send-section').style.display = 'block';
+
+      conn.on('data', (data) => {
+        addHistory(data);
+      });
+      conn.on('close', () => {
+        document.getElementById('status').innerText = '切断されました';
+        document.getElementById('send-section').style.display = 'none';
+        document.getElementById('connect-section').style.display = 'block';
+      });
+    }
+
+    function sendUrl() {
+      const input = document.getElementById('send-url');
+      const url = input.value;
+      if (!url || !conn) return;
+      conn.send(url);
+      addHistory(url);
+      input.value = '';
+    }
+
+    function addHistory(url) {
+      const historyDiv = document.getElementById('history');
+      const item = document.createElement('div');
+      item.className = 'url-item';
+      item.innerHTML = `
+        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px;">${url}</span>
+        <a href="${url}" target="_blank" rel="noreferrer">開く</a>
+      `;
+      historyDiv.insertBefore(item, historyDiv.firstChild);
+    }
+  </script>
+</body>
+</html>
